@@ -1,0 +1,273 @@
+---
+title: "Analysis of ground reaction forces for the detection of musculoskeletal disorders"
+author: "Carlos Felipe Rengifo Rodas"
+date: '2022-06-01'
+output: bookdown::pdf_document2
+---
+
+# Introduction
+
+## Dataset and variables
+
+GaitRec is a free to use database that comprises the ground reaction forces 
+(GRF) of $2,084$ participants with musculoskeletal disorders at hip ($450$),
+knee ($625$), ankle ($627$), and calcaneous ($382$), as well as $211$ healthy
+controls. The GRF were recorded in the vertical, vertical, anteroposterior, and 
+mediolateral directions, while the participants walked at self-select speed 
+along a 10 $m$ long straight corridor. The GRF were measured using one force
+plate for each foot (Kistler, Type 9281B12, Winterthur, CH).
+
+GaitRec comprises raw and processed GRF. The processed forces were obtained as
+follows:  (1) passing the raw GRF through a second-order low-pass Butterworth 
+filter with a cut-off frequency of 20 Hz to reduce noise, (2) normalizing the 
+duration of each stride to $100\%$, and (3) subsampling the GRF to obtain $101$ 
+points per stride. Unlike the raw GRF, which were stored in Newton, the 
+processed GRF were expressed as a multiple of the body weight to avoid bias when 
+comparing the GRF of participants of different mass. Each processed GRF file is 
+a $104$-column matrix. The first three columns are the participant, session, and 
+stride identifiers, respectively, and the resting $101$ columns are the 
+normalized GRF.
+
+Besides the GRF, GaitRec also comprises a metadata file with subject's, 
+identifier, sex, age, height, weight, affected side (right, left, or none), and
+the class to which the participant belongs, which can be healthy control (HC), 
+hip (H), knee (K), ankle (A), or calcaneus (C).
+
+## Goal of the project
+
+The objective of the present project is to compare different combinations of 
+predictors and multiclass machine learning models in terms of their accuracy, 
+sensitivity, and specificity to classify GRF as belonging to a healthy control 
+or to a participant with hip, knee, ankle, or calcaneal injury.
+
+## Key steps
+
+The main steps followed in this study were:
+
+1. Bind the GRF to the class to which the participant belongs, resulting in a 
+single data frame containing the predictors (GRF) and the output variable.
+
+2. Divide the data into training and test sets according to the partition 
+proposed by the GaitRed authors. This partitioning is important because it 
+ensures comparability between different studies.
+
+3. Extract features from the dataset. In this study, we considered three types 
+of predictors: (1) mean and standard deviation of the GRF in each direction 
+(vertical, anteroposterior, and mediolateral), (2) temporal location and 
+amplitude of the GRF's maxima and minima, and (3) the principal component of the 
+GRF.
+
+# Methods
+
+## Data loading and preprocessing
+
+The following code checks if the libraries required to run the analysis of the 
+GRF are installed.
+
+```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
+# Tidyverse package
+if(!require(tidyverse)) 
+  install.packages("tidyverse", repos="http://cran.us.r-project.org")
+
+# Caret package
+if(!require(caret)) 
+  install.packages("caret", repos="http://cran.us.r-project.org")
+
+# Ggplot2 package
+if(!require(ggplot2)) 
+  install.packages("ggplot2", repos="http://cran.us.r-project.org")
+
+# Kernlab package
+if(!require(kernlab)) 
+  install.packages("kernlab", repos="http://cran.us.r-project.org")
+
+# Knitr package
+if(!require(knitr)) 
+  install.packages("knitr", repos="http://cran.us.r-project.org")
+
+# Readxl package
+if(!require(readxl)) 
+  install.packages("readxl", repos="http://cran.us.r-project.org")
+options(digits = 3)
+```
+
+The following code checks whether the files of the GaitRec database are stored 
+in the *dataset* folder. If these files are not found, they are downloaded from
+the GaitRec website.
+
+```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
+# Read the CSV files with ground reaction forces in the vertical, anteroposterior,
+# and mediolateral directions:
+
+# Vertical ground reaction forces
+if (file.exists("dataset/GRF_F_V_PRO_left.csv")) {
+  grf_v_left <- read.csv(file = "dataset/GRF_F_V_PRO_left.csv")   
+} else {
+  download.file("https://springernature.figshare.com/ndownloader/files/22063191",
+                "dataset/GRF_F_V_PRO_left.csv")
+}
+
+# Anterior-posterior ground reaction forces
+if (file.exists("dataset/GRF_F_AP_PRO_left.csv")) {
+  grf_ap_left <- read.csv(file = "dataset/GRF_F_AP_PRO_left.csv")   
+} else {
+  download.file("https://springernature.figshare.com/ndownloader/files/22063185",
+                "dataset/GRF_F_AP_PRO_left.csv")
+}
+
+# Medio-lateral ground reaction forces
+if (file.exists("dataset/GRF_F_ML_PRO_left.csv")) {
+  grf_ml_left <- read.csv(file = "dataset/GRF_F_ML_PRO_left.csv")   
+} else {
+  download.file("https://springernature.figshare.com/ndownloader/files/22063113",
+                "dataset/GRF_F_ML_PRO_left.csv")
+}
+```
+
+In the sake of clarity, the values $0$, $1$, $2$ and NaN that takes the 
+AFFECTED_SIDE variable of the metadata file are replaced by the values LEFT, 
+RIGHT, BOTH or NONE, respectively. 
+
+```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
+meta <- read.csv(file = "dataset/GRF_metadata.csv") %>% 
+          mutate(CLASS_LABEL = factor(CLASS_LABEL)) %>%
+          mutate(AFFECTED_SIDE = case_when(AFFECTED_SIDE == 0 ~ "LEFT",
+                                           AFFECTED_SIDE == 1 ~ "RIGHT",
+                                           AFFECTED_SIDE == 2 ~ "BOTH",
+                                           is.na(AFFECTED_SIDE) ~ "NONE")) %>%
+          mutate(AFFECTED_SIDE = factor(AFFECTED_SIDE))
+```
+
+The GRF in the vertical, anteroposterior, and mediolateral directions are binded
+with subject, session, and trial identifiers. Hence, *grf_left* is a 306-column 
+matrix that contains the 303 GRF and three identifiers.
+
+```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
+join_vars <- c("SUBJECT_ID","SESSION_ID","TRIAL_ID")
+grf_left <- grf_v_left %>% inner_join(grf_ap_left,by = join_vars) %>%
+                inner_join(grf_ml_left,by = join_vars) 
+
+# Remove unused variables
+#rm(grf_v_left,grf_ap_left,grf_ml_left)
+```
+
+*grf_left* is binded with the metadata to obtain the data frame *dataset*, which
+will be used to apply the machine learning algorithms.
+
+```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
+# Join the data frames "grf_left" and "meta", and then remove the users whose 
+# affected side is the right or both
+dataset <- meta %>% select(SUBJECT_ID, SESSION_ID, CLASS_LABEL, AFFECTED_SIDE, 
+                           SESSION_TYPE, TRAIN_BALANCED, TEST) %>%
+                    inner_join(grf_left, by = c("SUBJECT_ID","SESSION_ID")) %>% 
+                    filter(AFFECTED_SIDE %in% c("LEFT","NONE")) %>%
+                    filter(SESSION_TYPE == 1)
+
+# Remove unused variables
+#rm(grf_left)  
+```
+
+## Data exploration
+
+The Table \@ref(tab:ppgroup) shows the number of participants per group.
+
+```{r ppgroup, echo=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+meta %>% group_by(CLASS_LABEL) %>% summarise(n = n_distinct(SUBJECT_ID)) %>%
+  rename("Class" = CLASS_LABEL, "Number of participants" = n) %>%
+  knitr::kable(align = 'c')
+```
+
+The following code creates a function that calculates the mean and the 
+confidence interval for the forces in a given direction (vertical, 
+anteroposterior, or mediolateral)
+
+```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
+ci_forces <- function(data,colforces) {
+  # Rename the columns with the forces with the numbers from 1 to 101
+  colnames(data)[colforces] <- 1:101
+  data %>%
+  gather(key = "TIME", value = "FORCE", all_of(colforces)) %>%
+    mutate(TIME = as.numeric(TIME)) %>%
+    group_by(CLASS_LABEL,TIME) %>%
+    summarise(MEAN = mean(FORCE), 
+              LOWER = MEAN - 1.96*sd(FORCE),
+              UPPER = MEAN + 1.96*sd(FORCE)) %>%
+    gather(key = "TYPE", value = "VALUE", c("MEAN","LOWER", "UPPER"))
+}
+```
+
+The next step is to apply the *ci_forces* function to the GRF in each direction,
+and then plot these forces per group.
+
+```{r grfall, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE, out.width="75%", fig.align='center', fig.cap ="Lower, mean, and upper GRF per group. Healthy controls (HC), Hip (H), Knee (K), Ankle (A), and Calcaneous (C)."}
+# Columns with the first and last forces in each direction
+noforces  <- 1:8
+f_v_1     <- which(colnames(dataset) == "F_V_PRO_1")
+f_v_101   <- which(colnames(dataset) == "F_V_PRO_101")
+f_ap_1    <- which(colnames(dataset) == "F_AP_PRO_1")
+f_ap_101  <- which(colnames(dataset) == "F_AP_PRO_101")
+f_ml_1    <- which(colnames(dataset) == "F_ML_PRO_1")
+f_ml_101  <- which(colnames(dataset) == "F_ML_PRO_101")
+
+# Confidence interval by direction
+ci_forces_v  <- ci_forces(dataset,f_v_1:f_v_101) %>% mutate(DIRECTION = "V")
+ci_forces_ap <- ci_forces(dataset,f_ap_1:f_ap_101) %>% mutate(DIRECTION = "AP")
+ci_forces_ml <- ci_forces(dataset,f_ml_1:f_ml_101) %>% mutate(DIRECTION = "ML")
+ci_forces_3D <- rbind(ci_forces_v, ci_forces_ap, ci_forces_ml) 
+
+# Plot confidence intervals
+ci_forces_3D %>% ggplot(aes(x = TIME,y = VALUE, color = CLASS_LABEL)) + 
+  geom_line() + facet_grid(DIRECTION ~ TYPE, scales = "free_y")
+```
+According to Figure \@ref(fig:grfall), there are notable differences between the
+healthy controls (HC) and the other four groups. On the other hand, 
+Figure \@ref(fig:grfhk) shows that the GRF of the participants with hip (H) and 
+knee (K) injuries are very similar in the anteroposterior and the vertical 
+directions.
+
+```{r grfhk, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE, out.width="75%", fig.align='center', fig.cap ="Lower, mean, and upper GRF for the participants with hip (H) and knee (K) injuries."}
+# Plot confidence intervals
+ci_forces_3D %>% filter(CLASS_LABEL %in% c("H","K")) %>%
+  ggplot(aes(x = TIME,y = VALUE, color = CLASS_LABEL)) + 
+  geom_line() + facet_grid(DIRECTION ~ TYPE, scales = "free_y")
+```
+
+The Figure \@ref(fig:grfac) shows that the GRF of the participants with 
+ankle (A) and calcaneous (K) impairment are very similar in the mediolateral and 
+the vertical directions.
+
+```{r grfac, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE, out.width="75%", fig.align='center', fig.cap ="Lower, mean, and upper GRF for the participants with ankle (A) and calcaneous (C) injuries."}
+# Plot confidence intervals
+ci_forces_3D %>% filter(CLASS_LABEL %in% c("A","C")) %>%
+  ggplot(aes(x = TIME,y = VALUE, color = CLASS_LABEL)) + 
+  geom_line() + facet_grid(DIRECTION ~ TYPE, scales = "free_y")
+```
+
+## Training and test sets
+
+The metadata file includes a column that defines whether a subject's GRF belongs 
+to the training set or the test set. It is important to maintain this partition
+to ensure comparability between different studies. The following chunk of code
+creates the 303-columns matrices *xtest* and *xtrain* with the GRF in vertical, 
+anteroposterior, and mediolateral directions.
+
+```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
+# Training set
+trainset <- dataset %>% filter(TRAIN_BALANCED == 1)
+# Predictors for the training set
+xtrain <- trainset %>% select(-SUBJECT_ID, -CLASS_LABEL, -AFFECTED_SIDE,
+                         -SESSION_ID, -TRIAL_ID, -SESSION_TYPE, 
+                         -TRAIN_BALANCED, -TEST) %>% as.matrix()
+# Class for the training set                   
+ytrain <- trainset$CLASS_LABEL
+  
+## Test set
+testset <- dataset %>% filter(TEST == 1)
+# Predictors for the test set
+xtest <- testset %>% select(-SUBJECT_ID, -CLASS_LABEL, -AFFECTED_SIDE,
+                            -SESSION_ID, -TRIAL_ID, -SESSION_TYPE, 
+                            -TRAIN_BALANCED, -TEST) %>% as.matrix()
+# Class for the test set                   
+ytest <- testset$CLASS_LABEL
+```
+
