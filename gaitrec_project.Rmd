@@ -6,9 +6,7 @@ output: bookdown::pdf_document2
 ---
 
 # Introduction
-
 ## Dataset and variables
-
 GaitRec is a free to use database that comprises the ground reaction forces 
 (GRF) of $2,084$ participants with musculoskeletal disorders at hip ($450$),
 knee ($625$), ankle ($627$), and calcaneous ($382$), as well as $211$ healthy
@@ -34,33 +32,28 @@ the class to which the participant belongs, which can be healthy control (HC),
 hip (H), knee (K), ankle (A), or calcaneus (C).
 
 ## Goal of the project
-
 The objective of the present project is to compare different combinations of 
 predictors and multiclass machine learning models in terms of their accuracy, 
 sensitivity, and specificity to classify GRF as belonging to a healthy control 
 or to a participant with hip, knee, ankle, or calcaneal injury.
 
 ## Key steps
-
 The main steps followed in this study were:
 
 1. Bind the GRF to the class to which the participant belongs, resulting in a 
 single data frame containing the predictors (GRF) and the output variable.
 
 2. Divide the data into training and test sets according to the partition 
-proposed by the GaitRed authors. This partitioning is important because it 
+proposed by the GaitRec authors. This partitioning is important because it 
 ensures comparability between different studies.
 
-3. Extract features from the dataset. In this study, we considered three types 
-of predictors: (1) mean and standard deviation of the GRF in each direction 
-(vertical, anteroposterior, and mediolateral), (2) temporal location and 
-amplitude of the GRF's maxima and minima, and (3) the principal component of the 
-GRF.
+3. Extract features from the dataset. In this study, we considered two types 
+of predictors: (1) the principal components of the GRF and (2) mean, standard 
+deviation, and maximum force of the GRF in each direction (vertical, 
+anteroposterior, and mediolateral).
 
 # Methods
-
 ## Data loading and preprocessing
-
 The following code checks if the libraries required to run the analysis of the 
 GRF are installed.
 
@@ -134,7 +127,7 @@ if (file.exists("dataset/GRF_F_ML_PRO_left.csv")) {
 
 In the sake of clarity, the values $0$, $1$, $2$ and NaN that takes the 
 AFFECTED_SIDE variable of the metadata file are replaced by the values LEFT, 
-RIGHT, BOTH or NONE, respectively. 
+RIGHT, BOTH, and NONE, respectively. 
 
 ```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
 meta <- read.csv(file = "dataset/GRF_metadata.csv") %>% 
@@ -176,8 +169,7 @@ dataset <- meta %>% select(SUBJECT_ID, SESSION_ID, CLASS_LABEL, AFFECTED_SIDE,
 ```
 
 ## Data exploration
-
-The Table \@ref(tab:ppgroup) shows the number of participants per group.
+The following Table shows the number of participants per group.
 
 ```{r ppgroup, echo=TRUE, error=FALSE, warning=FALSE, message=FALSE}
 meta %>% group_by(CLASS_LABEL) %>% summarise(n = n_distinct(SUBJECT_ID)) %>%
@@ -187,7 +179,7 @@ meta %>% group_by(CLASS_LABEL) %>% summarise(n = n_distinct(SUBJECT_ID)) %>%
 
 The following code creates a function that calculates the mean and the 
 confidence interval for the forces in a given direction (vertical, 
-anteroposterior, or mediolateral)
+anteroposterior, or mediolateral).
 
 ```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
 ci_forces <- function(data,colforces) {
@@ -279,10 +271,10 @@ ytest <- testset$CLASS_LABEL
 ```
 
 # Results
-This section presents four models: (i) k-nearest neighbors and (ii) random 
-forest, both trained with the principal components of the GRF (48-predictors), 
-and (iii) k-nearest neighbors and (iv) random forest trained with the mean, 
-standard deviation, and maximum of GRF in each direction (6-predictor).
+This section presents four models: (i) k-nearest neighbors (kNN) and (ii) random 
+forest (RF), both trained with the principal components of the GRF (48-predictors), 
+and (iii) kNN and (iv) Rf trained with the mean, standard deviation, and maximum 
+of GRF in each direction (9-predictors).
 
 ## Principal component analysis (PCA)
 The following code calculates of principal components of GRF used for training.
@@ -318,8 +310,8 @@ ztest <- pca_test$x[,1:max_pca_col]
 ```
 
 ### K-nearest neighbors model
-The confusion matrix for k-nearest neighbors model shows that no matter the 
-musculoskeletal disorder (A, C, H, or K), a participant is likely to be classified
+The confusion matrix for kNN model shows that no matter the musculoskeletal 
+disorder (A, C, H, or K), a participant is very likely to be classified
 as a healthy control (fourth row of the confusion matrix). This means that the 
 classes (A, C, H, and K) have high specificity but very low sensitivity. Similarly, 
 most HCs are classified as calcaneal injuries (fourth column of the confusion 
@@ -338,8 +330,8 @@ print(cm_knn)
 The overall accuracy of the model is as low as `r acc_knn`.
 
 ### Random forest model
-The following code calculates and validates a random forest model. In the sake 
-of computation time *Rborist* was used instead of *train*
+The following code calculates and validates a RF model. In the sake 
+of computation time, the *Rborist* function was used instead of *train*.
 
 ```{r, echo=TRUE, error=FALSE, warning=FALSE, message=FALSE}
 # Random forest
@@ -350,11 +342,14 @@ acc_rf <- cm_rf$overall["Accuracy"]
 print(cm_rf)
 ```
 
-The confusion matrix above shows that the random forest model performs as poorly 
-as the k-nearest neighbors model. The random forest, despite its complexity, 
-increased the overall accuracy only from `r acc_knn` to `r acc_rf`.
+The confusion matrix above shows that the RF model performs as poorly as the 
+kNN model. The RF, despite its complexity, increased the overall accuracy only 
+from `r acc_knn` to `r acc_rf`.
 
 ## Simple statistics as training features
+This section presents a kNN model and a RF model, both trained using the mean, 
+standard deviation, and maximum GRF in each direction (vertical, 
+anteroposterior, and mediolateral).
 
 ```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
 # Function that returns the statistical moments
@@ -378,10 +373,9 @@ mtest <- get_statistical_predictors(xtest)
 ```
 
 ### K-nearest neighbors model
-
-The confusion matrix shows that the specificities of the k-nearest neighbors 
-model trained with simple statistics are higher than those of the model trained 
-with PCA. The greatest improvement in specificity is obtained for the HC class.
+The confusion matrix shows that the specificities of the kNN model trained with 
+simple statistics are higher than those of the model trained with PCA. The 
+greatest improvement in specificity is obtained for the HC class.
 
 ```{r, echo=TRUE, error=FALSE, warning=FALSE, message=FALSE}
 # k-nearest neighbors
@@ -397,7 +391,7 @@ With respect to PCA, the model trained with simple statistics increased the
 overall accuracy from `r acc_knn` to `r acc_knn2`.
 
 ### Random forest model
-The following code calculates and validates a random forest model whose training
+The following code calculates and validates a RF model whose training
 features are the mean, standard deviation, and maximum of the GRF.
 
 ```{r, echo=TRUE, error=FALSE, warning=FALSE, message=FALSE}
@@ -409,9 +403,30 @@ acc_rf2 <- cm_rf2$overall["Accuracy"]
 print(cm_rf2)
 ```
 
-The confusion matrix shows that the specificities of the random forest model 
+The confusion matrix shows that the specificities of the RF model 
 trained with simple statistics outperform the models trained with PCA. Like 
-k-nearest neighbors models, the greatest improvement in specificity is obtained 
-for the HC class. 
+kNN models, the greatest improvement in specificity is obtained for the HC 
+class. 
 
 # Conclusion
+In this work, we trained two machine learning models (kNN and RF) to detect 
+musculoskeletal injuries using the GRF. These models provided an output 
+indicating whether the GRF belongs to a healthy control or to a participant 
+with a hip, knee, ankle, or calcaneus injury. The kNN and the RF were initially
+trained with the first 48 principal components of the 303-columns GRF matrix. Both 
+models presented an overall accuracy below 20%, which is the expected accuracy 
+when choosing a class of five at random. The second approach was to train the 
+models using the mean, standard deviation, and maximum force in the vertical,
+anteroposterior, and mediolateral directions. These nine-predictors outperformed
+the results provided by the 48-predictors. Although, the second set of features 
+increased the overall accuracy to more than 50%, the practical
+utility of the classifiers is still very limited. Figures \@ref(fig:grfhk) and
+\@ref(fig:grfac) suggest that a potential source of difficulty in solving
+this classification problem is the similarity between the GRF of some classes.
+
+Future works on the GaitRc dataset should explore new features such as those 
+based on the frequency and amplitude of of the harmonics provided by the 
+discrete-time Fourier transform. A second set of predictors could be the 
+location and amplitudes of the GRF maxima and minima.
+
+
