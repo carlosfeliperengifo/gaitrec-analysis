@@ -271,3 +271,60 @@ xtest <- testset %>% select(-SUBJECT_ID, -CLASS_LABEL, -AFFECTED_SIDE,
 ytest <- testset$CLASS_LABEL
 ```
 
+# Results
+
+## Principal component analysis (PCA)
+
+The following code calculates of principal components of GRF used for training.
+
+```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
+# Principal component analysis
+xtrain_pca <- prcomp(xtrain)
+# Cumulative standard deviation
+cumsdev <- cumsum(xtrain_pca$sdev/sum(xtrain_pca$sdev))
+# Minimum number of columns required to explain 95% of the variability
+max_pca_col <- min(which(cumsdev >= 0.95))
+ztrain <- xtrain_pca$x[,1:max_pca_col]
+```
+
+The above calculations shows that the first `r max_pca_col` columns of the PCA 
+matrix explain 95% of the variability of the training set. The Figure \@ref(fig:grfac) 
+shows variability versus the number of columns.
+
+```{r variability, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE, out.width="75%", fig.align='center', fig.cap ="Percentage of variability versus the number of columns of the matrix that results from applying PCA to the GRF."}
+# Plot the cumulative standard deviation
+data.frame(n = 1:303, cumsdev) %>% ggplot(aes(n,cumsdev)) + 
+  scale_y_continuous(trans='log2') + geom_point() 
+```
+Principal component analysis for the test set. 
+
+```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
+# Principal component analysis
+pca_test <- prcomp(xtest)
+# Cumulative standard deviation
+cumsdev <- cumsum(pca_test$sdev/sum(pca_test$sdev))
+# Reduced set of features
+ztest <- pca_test$x[,1:max_pca_col]
+```
+
+The confusion matrix for K nearest neighbors model shows that no matter the 
+musculoskeletal disorder, a participant is likely to be classified as a healthy 
+control (fourth row of the confusion matrix). This means that the classes (A, C, 
+H, and K) have high specificity but very low sensitivity.  
+
+```{r, echo=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+## K-NEAREST NEIGHBORS
+model_knn <- train(ztrain, ytrain, method = "knn")
+yhat_knn <- predict(model_knn, ztest)
+cm_knn <- confusionMatrix(yhat_knn, ytest)
+acc_knn <- cm_knn$overall["Accuracy"]
+cm_knn$table %>% knitr::kable(align = 'c')
+```
+
+
+<!-- 
+Considering the similarities between groups H and K (\@ref(fig:grfhk)) and
+between the groups A and C (\@ref(fig:grfac)), we will combine the classes H and
+K into a single class named hip-knee (HK), and the classes A and C into the 
+class angle-calcaneous (AC).
+-->
