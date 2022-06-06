@@ -1,0 +1,3 @@
+The CSV files contained in the directory can be downloaded from:
+
+https://springernature.figshare.com/collections/GaitRec_A_large-scale_ground_reaction_force_dataset_of_healthy_and_impaired_gait/4788012
