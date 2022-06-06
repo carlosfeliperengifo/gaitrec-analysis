@@ -99,29 +99,31 @@ the GaitRec website.
 ```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
 # Read the CSV files with ground reaction forces in the vertical, anteroposterior,
 # and mediolateral directions:
-
 # Vertical ground reaction forces
-if (file.exists("dataset/GRF_F_V_PRO_left.csv")) {
-  grf_v_left <- read.csv(file = "dataset/GRF_F_V_PRO_left.csv")   
-} else {
+if (!file.exists("dataset/GRF_F_V_PRO_left.csv")) {
   download.file("https://springernature.figshare.com/ndownloader/files/22063191",
                 "dataset/GRF_F_V_PRO_left.csv")
 }
+grf_v_left <- read.csv(file = "dataset/GRF_F_V_PRO_left.csv")   
 
 # Anterior-posterior ground reaction forces
-if (file.exists("dataset/GRF_F_AP_PRO_left.csv")) {
-  grf_ap_left <- read.csv(file = "dataset/GRF_F_AP_PRO_left.csv")   
-} else {
+if (!file.exists("dataset/GRF_F_AP_PRO_left.csv")) {
   download.file("https://springernature.figshare.com/ndownloader/files/22063185",
                 "dataset/GRF_F_AP_PRO_left.csv")
 }
+grf_ap_left <- read.csv(file = "dataset/GRF_F_AP_PRO_left.csv")   
 
 # Medio-lateral ground reaction forces
-if (file.exists("dataset/GRF_F_ML_PRO_left.csv")) {
-  grf_ml_left <- read.csv(file = "dataset/GRF_F_ML_PRO_left.csv")   
-} else {
+if (!file.exists("dataset/GRF_F_ML_PRO_left.csv")) {
   download.file("https://springernature.figshare.com/ndownloader/files/22063113",
                 "dataset/GRF_F_ML_PRO_left.csv")
+}
+grf_ml_left <- read.csv(file = "dataset/GRF_F_ML_PRO_left.csv")   
+
+# Metadata
+if (!file.exists("dataset/GRF_metadata.csv")) {
+  download.file("https://springernature.figshare.com/ndownloader/files/22062960",
+                "dataset/GRF_metadata.csv")
 }
 ```
 
