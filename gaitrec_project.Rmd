@@ -73,6 +73,14 @@ if(!require(tidyverse))
 if(!require(caret)) 
   install.packages("caret", repos="http://cran.us.r-project.org")
 
+# Rborist package
+if(!require(Rborist)) 
+  install.packages("Rborist", repos="http://cran.us.r-project.org")
+
+# MatrixStats package
+if(!require(matrixStats)) 
+  install.packages("matrixStats", repos="http://cran.us.r-project.org")
+
 # Ggplot2 package
 if(!require(ggplot2)) 
   install.packages("ggplot2", repos="http://cran.us.r-project.org")
@@ -244,7 +252,6 @@ ci_forces_3D %>% filter(CLASS_LABEL %in% c("A","C")) %>%
 ```
 
 ## Training and test sets
-
 The metadata file includes a column that defines whether a subject's GRF belongs 
 to the training set or the test set. It is important to maintain this partition
 to ensure comparability between different studies. The following chunk of code
@@ -272,9 +279,12 @@ ytest <- testset$CLASS_LABEL
 ```
 
 # Results
+This section presents four models: (i) k-nearest neighbors and (ii) random 
+forest, both trained with the principal components of the GRF (48-predictors), 
+and (iii) k-nearest neighbors and (iv) random forest trained with the mean, 
+standard deviation, and maximum of GRF in each direction (6-predictor).
 
 ## Principal component analysis (PCA)
-
 The following code calculates of principal components of GRF used for training.
 
 ```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
@@ -307,24 +317,101 @@ cumsdev <- cumsum(pca_test$sdev/sum(pca_test$sdev))
 ztest <- pca_test$x[,1:max_pca_col]
 ```
 
-The confusion matrix for K nearest neighbors model shows that no matter the 
-musculoskeletal disorder, a participant is likely to be classified as a healthy 
-control (fourth row of the confusion matrix). This means that the classes (A, C, 
-H, and K) have high specificity but very low sensitivity.  
+### K-nearest neighbors model
+The confusion matrix for k-nearest neighbors model shows that no matter the 
+musculoskeletal disorder (A, C, H, or K), a participant is likely to be classified
+as a healthy control (fourth row of the confusion matrix). This means that the 
+classes (A, C, H, and K) have high specificity but very low sensitivity. Similarly, 
+most HCs are classified as calcaneal injuries (fourth column of the confusion 
+matrix).
 
 ```{r, echo=TRUE, error=FALSE, warning=FALSE, message=FALSE}
-## K-NEAREST NEIGHBORS
-model_knn <- train(ztrain, ytrain, method = "knn")
+# k-nearest neighbors
+model_knn <- train(ztrain, ytrain, method = "knn", 
+                   tuneGrid = data.frame(k = seq(5, 70, 5)))
 yhat_knn <- predict(model_knn, ztest)
 cm_knn <- confusionMatrix(yhat_knn, ytest)
 acc_knn <- cm_knn$overall["Accuracy"]
-cm_knn$table %>% knitr::kable(align = 'c')
+print(cm_knn)
 ```
 
+The overall accuracy of the model is as low as `r acc_knn`.
 
-<!-- 
-Considering the similarities between groups H and K (\@ref(fig:grfhk)) and
-between the groups A and C (\@ref(fig:grfac)), we will combine the classes H and
-K into a single class named hip-knee (HK), and the classes A and C into the 
-class angle-calcaneous (AC).
--->
+### Random forest model
+The following code calculates and validates a random forest model. In the sake 
+of computation time *Rborist* was used instead of *train*
+
+```{r, echo=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+# Random forest
+model_rf <- Rborist(ztrain, ytrain)
+yhat_rf <- predict(model_rf, ztest)
+cm_rf <- confusionMatrix(yhat_rf$yPred, ytest)
+acc_rf <- cm_rf$overall["Accuracy"]
+print(cm_rf)
+```
+
+The confusion matrix above shows that the random forest model performs as poorly 
+as the k-nearest neighbors model. The random forest, despite its complexity, 
+increased the overall accuracy only from `r acc_knn` to `r acc_rf`.
+
+## Simple statistics as training features
+
+```{r, echo=TRUE, results='hide', error=FALSE, warning=FALSE, message=FALSE}
+# Function that returns the statistical moments
+get_statistical_predictors <- function(x) {
+  data.frame(mean_f  = rowMeans(x[,1:101]), 
+             mean_ap = rowMeans(x[,102:202]), 
+             mean_ml = rowMeans(x[,203:303]), 
+             sd_f    = rowSds(x[,1:101]),
+             sd_ap   = rowSds(x[,102:202]),
+             sd_ap   = rowSds(x[,203:303]),
+             max_f   = rowMaxs(x[,1:101]),
+             max_ap  = rowMaxs(x[,102:202]),   
+             max_ml  = rowMaxs(x[,203:303]))
+}
+
+# Statistical moments for the training set
+mtrain <- get_statistical_predictors(xtrain)
+
+# Statistical moments for the test set
+mtest <- get_statistical_predictors(xtest)
+```
+
+### K-nearest neighbors model
+
+The confusion matrix shows that the specificities of the k-nearest neighbors 
+model trained with simple statistics are higher than those of the model trained 
+with PCA. The greatest improvement in specificity is obtained for the HC class.
+
+```{r, echo=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+# k-nearest neighbors
+model_knn2 <- train(mtrain, ytrain, method = "knn", 
+                    tuneGrid = data.frame(k = seq(5, 70, 5)))
+yhat_knn2 <- predict(model_knn2, mtest)
+cm_knn2 <- confusionMatrix(yhat_knn2, ytest)
+acc_knn2 <- cm_knn2$overall["Accuracy"]
+print(cm_knn2)
+```
+
+With respect to PCA, the model trained with simple statistics increased the 
+overall accuracy from `r acc_knn` to `r acc_knn2`.
+
+### Random forest model
+The following code calculates and validates a random forest model whose training
+features are the mean, standard deviation, and maximum of the GRF.
+
+```{r, echo=TRUE, error=FALSE, warning=FALSE, message=FALSE}
+# Random forest
+model_rf2 <- Rborist(mtrain, ytrain)
+yhat_rf2 <- predict(model_rf2, mtest)
+cm_rf2 <- confusionMatrix(yhat_rf2$yPred, ytest)
+acc_rf2 <- cm_rf2$overall["Accuracy"]
+print(cm_rf2)
+```
+
+The confusion matrix shows that the specificities of the random forest model 
+trained with simple statistics outperform the models trained with PCA. Like 
+k-nearest neighbors models, the greatest improvement in specificity is obtained 
+for the HC class. 
+
+# Conclusion
